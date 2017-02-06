@@ -1,4 +1,4 @@
-Escaped HTML like &lt;div&gt; or &amp; should remain escaped on output
+Escaped HTML like <div> or & should NOT remain escaped on output
 
     
     
