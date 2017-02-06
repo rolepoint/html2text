@@ -181,11 +181,7 @@ class HTML2Text(HTMLParser.HTMLParser):
         self.handle_data(charref, True)
 
     def handle_entityref(self, c):
-        entityref = self.entityref(c)
-        if (not self.code and not self.pre
-                and entityref != '&nbsp_place_holder;'):
-            entityref = html_escape(entityref)
-        self.handle_data(entityref, True)
+        self.o(self.entityref(c), 1)
 
     def handle_starttag(self, tag, attrs):
         self.handle_tag(tag, attrs, 1)
