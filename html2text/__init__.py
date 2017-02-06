@@ -590,7 +590,9 @@ class HTML2Text(HTMLParser.HTMLParser):
                     self.soft_br()
                 if tag == "tr" and not start and self.table_start:
                     # Underline table header
-                    self.o("|".join(["---"] * self.td_count))
+                    # but only if there is some text before it
+                    if self.outtextlist and re.match(r'\S', self.outtextlist[-1]):
+                        self.o("|".join(["---"] * self.td_count))
                     self.soft_br()
                     self.table_start = False
                 if tag in ["td", "th"] and start:
@@ -650,7 +652,6 @@ class HTML2Text(HTMLParser.HTMLParser):
                 return
 
             if self.startpre:
-                #self.out(" :") #TODO: not output when already one there
                 if not data.startswith("\n"):  # <pre>stuff...
                     data = "\n" + data
                 if self.mark_code:
@@ -664,7 +665,7 @@ class HTML2Text(HTMLParser.HTMLParser):
             if self.pre:
                 if not self.list:
                     bq += "    "
-                #else: list content is already partially indented
+                # list content is already partially indented
                 for i in range(len(self.list)):
                     bq += "    "
                 data = data.replace("\n", "\n" + bq)
@@ -745,10 +746,6 @@ class HTML2Text(HTMLParser.HTMLParser):
         if not self.code and not self.pre and not entity_char:
             data = escape_md_section(data, snob=self.escape_snob)
         self.o(data, 1)
-
-    def unknown_decl(self, data):  # pragma: no cover
-        # TODO: what is this doing here?
-        pass
 
     def charref(self, name):
         if name[0] in ['x', 'X']:
