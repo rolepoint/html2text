@@ -120,6 +120,9 @@ class HTML2Text(HTMLParser.HTMLParser):
         self.abbr_list = {}  # stack of abbreviations to write later
         self.baseurl = baseurl
 
+        self.last_emphasis_was_open = False
+        self.whitespaces_buffer = []
+
         try:
             del unifiable_n[name2cp('nbsp')]
         except KeyError:
@@ -215,7 +218,20 @@ class HTML2Text(HTMLParser.HTMLParser):
             if match:
                 return i
 
-    def handle_emphasis(self, start, tag_style, parent_style):
+    def handle_emphasis(self, tag, start):
+        if tag in ['strong', 'b']:
+            self.o(self.strong_mark)
+        if tag in ['em', 'i', 'u']:
+            self.o(self.emphasis_mark)
+        if start:
+            self.last_emphasis_was_open = True
+        else:
+            for white in self.whitespaces_buffer:
+                self.o(white)
+            self.whitespaces_buffer = []
+            self.last_emphasis_was_open = False
+
+    def handle_gdocs_emphasis(self, start, tag_style, parent_style):
         """
         Handles various text emphases
         """
@@ -331,10 +347,11 @@ class HTML2Text(HTMLParser.HTMLParser):
                 self.p()
 
         if tag == "br" and start:
-            if self.blockquote > 0:
-                self.o("  \n> ")
+            line_break = "  \n> " if self.blockquote > 0 else "  \n"
+            if self.last_emphasis_was_open:
+                self.whitespaces_buffer.append(line_break)
             else:
-                self.o("  \n")
+                self.o(line_break)
 
         if tag == "hr" and start:
             self.p()
@@ -366,10 +383,9 @@ class HTML2Text(HTMLParser.HTMLParser):
                 self.blockquote -= 1
                 self.p()
 
-        if tag in ['em', 'i', 'u'] and not self.ignore_emphasis:
-            self.o(self.emphasis_mark)
-        if tag in ['strong', 'b'] and not self.ignore_emphasis:
-            self.o(self.strong_mark)
+        if tag in ['em', 'i', 'u', 'strong', 'b'] and not self.ignore_emphasis:
+            self.handle_emphasis(tag, start)
+
         if tag in ['del', 'strike', 's']:
             if start:
                 self.o('~~')
@@ -379,7 +395,7 @@ class HTML2Text(HTMLParser.HTMLParser):
         if self.google_doc:
             if not self.inheader:
                 # handle some font attributes, but leave headers clean
-                self.handle_emphasis(start, tag_style, parent_style)
+                self.handle_gdocs_emphasis(start, tag_style, parent_style)
 
         if tag in ["code", "tt"] and not self.pre:
             self.o('`')  # TODO: `` `this` ``
