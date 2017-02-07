@@ -35,7 +35,7 @@ def list_of_test_files():
 def test_html_converts_in_expected_markdown(name):
         html_source, expected = get_html_and_markdown(name)
         converted = html2text.html2text(html_source)
-        assert converted == expected
+        assert expected == converted
 
 
 class TestExtras:

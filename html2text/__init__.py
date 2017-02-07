@@ -149,7 +149,6 @@ class HTML2Text(HTMLParser.HTMLParser):
 
     def close(self):
         HTMLParser.HTMLParser.close(self)
-
         try:
             nochr = unicode('')
             unicode_character = unichr
@@ -174,7 +173,6 @@ class HTML2Text(HTMLParser.HTMLParser):
         # Clear self.outtextlist to avoid memory leak of its content to
         # the next handling.
         self.outtextlist = []
-
         return outtext
 
     def handle_charref(self, c):
@@ -184,7 +182,17 @@ class HTML2Text(HTMLParser.HTMLParser):
         self.handle_data(charref, True)
 
     def handle_entityref(self, c):
-        self.o(self.entityref(c), 1)
+        entityref = self.entityref(c)
+
+        # convert the entity, unless it's a < or >
+        # in order to avoid obvious XSS attacks
+        if c not in ['lt', 'gt']:
+            self.o(entityref)
+        else:
+            if not self.code and not self.pre and entityref != '&nbsp_place_holder;':
+                self.handle_data(html_escape(entityref), True)
+            else:
+                self.o(self.entityref(c))
 
     def handle_starttag(self, tag, attrs):
         self.handle_tag(tag, attrs, 1)
