@@ -120,6 +120,9 @@ class HTML2Text(HTMLParser.HTMLParser):
         self.abbr_list = {}  # stack of abbreviations to write later
         self.baseurl = baseurl
 
+        self.last_emphasis_was_open = False
+        self.whitespaces_buffer = []
+
         try:
             del unifiable_n[name2cp('nbsp')]
         except KeyError:
@@ -146,7 +149,6 @@ class HTML2Text(HTMLParser.HTMLParser):
 
     def close(self):
         HTMLParser.HTMLParser.close(self)
-
         try:
             nochr = unicode('')
             unicode_character = unichr
@@ -171,7 +173,6 @@ class HTML2Text(HTMLParser.HTMLParser):
         # Clear self.outtextlist to avoid memory leak of its content to
         # the next handling.
         self.outtextlist = []
-
         return outtext
 
     def handle_charref(self, c):
@@ -182,10 +183,16 @@ class HTML2Text(HTMLParser.HTMLParser):
 
     def handle_entityref(self, c):
         entityref = self.entityref(c)
-        if (not self.code and not self.pre
-                and entityref != '&nbsp_place_holder;'):
-            entityref = html_escape(entityref)
-        self.handle_data(entityref, True)
+
+        # convert the entity, unless it's a < or >
+        # in order to avoid obvious XSS attacks
+        if c not in ['lt', 'gt']:
+            self.o(entityref)
+        else:
+            if not self.code and not self.pre and entityref != '&nbsp_place_holder;':
+                self.handle_data(html_escape(entityref), True)
+            else:
+                self.o(self.entityref(c))
 
     def handle_starttag(self, tag, attrs):
         self.handle_tag(tag, attrs, 1)
@@ -219,7 +226,20 @@ class HTML2Text(HTMLParser.HTMLParser):
             if match:
                 return i
 
-    def handle_emphasis(self, start, tag_style, parent_style):
+    def handle_emphasis(self, tag, start):
+        if tag in ['strong', 'b']:
+            self.o(self.strong_mark)
+        if tag in ['em', 'i', 'u']:
+            self.o(self.emphasis_mark)
+        if start:
+            self.last_emphasis_was_open = True
+        else:
+            for white in self.whitespaces_buffer:
+                self.o(white)
+            self.whitespaces_buffer = []
+            self.last_emphasis_was_open = False
+
+    def handle_gdocs_emphasis(self, start, tag_style, parent_style):
         """
         Handles various text emphases
         """
@@ -335,10 +355,11 @@ class HTML2Text(HTMLParser.HTMLParser):
                 self.p()
 
         if tag == "br" and start:
-            if self.blockquote > 0:
-                self.o("  \n> ")
+            line_break = "  \n> " if self.blockquote > 0 else "  \n"
+            if self.last_emphasis_was_open:
+                self.whitespaces_buffer.append(line_break)
             else:
-                self.o("  \n")
+                self.o(line_break)
 
         if tag == "hr" and start:
             self.p()
@@ -370,10 +391,9 @@ class HTML2Text(HTMLParser.HTMLParser):
                 self.blockquote -= 1
                 self.p()
 
-        if tag in ['em', 'i', 'u'] and not self.ignore_emphasis:
-            self.o(self.emphasis_mark)
-        if tag in ['strong', 'b'] and not self.ignore_emphasis:
-            self.o(self.strong_mark)
+        if tag in ['em', 'i', 'u', 'strong', 'b'] and not self.ignore_emphasis:
+            self.handle_emphasis(tag, start)
+
         if tag in ['del', 'strike', 's']:
             if start:
                 self.o('~~')
@@ -383,7 +403,7 @@ class HTML2Text(HTMLParser.HTMLParser):
         if self.google_doc:
             if not self.inheader:
                 # handle some font attributes, but leave headers clean
-                self.handle_emphasis(start, tag_style, parent_style)
+                self.handle_gdocs_emphasis(start, tag_style, parent_style)
 
         if tag in ["code", "tt"] and not self.pre:
             self.o('`')  # TODO: `` `this` ``
@@ -594,7 +614,9 @@ class HTML2Text(HTMLParser.HTMLParser):
                     self.soft_br()
                 if tag == "tr" and not start and self.table_start:
                     # Underline table header
-                    self.o("|".join(["---"] * self.td_count))
+                    # but only if there is some text before it
+                    if self.outtextlist and re.match(r'\S', self.outtextlist[-1]):
+                        self.o("|".join(["---"] * self.td_count))
                     self.soft_br()
                     self.table_start = False
                 if tag in ["td", "th"] and start:
@@ -654,7 +676,6 @@ class HTML2Text(HTMLParser.HTMLParser):
                 return
 
             if self.startpre:
-                #self.out(" :") #TODO: not output when already one there
                 if not data.startswith("\n"):  # <pre>stuff...
                     data = "\n" + data
                 if self.mark_code:
@@ -668,7 +689,7 @@ class HTML2Text(HTMLParser.HTMLParser):
             if self.pre:
                 if not self.list:
                     bq += "    "
-                #else: list content is already partially indented
+                # list content is already partially indented
                 for i in range(len(self.list)):
                     bq += "    "
                 data = data.replace("\n", "\n" + bq)
@@ -749,10 +770,6 @@ class HTML2Text(HTMLParser.HTMLParser):
         if not self.code and not self.pre and not entity_char:
             data = escape_md_section(data, snob=self.escape_snob)
         self.o(data, 1)
-
-    def unknown_decl(self, data):  # pragma: no cover
-        # TODO: what is this doing here?
-        pass
 
     def charref(self, name):
         if name[0] in ['x', 'X']:
