@@ -1,7 +1,7 @@
 import re
 
 # Use Unicode characters instead of their ascii psuedo-replacements
-UNICODE_SNOB = 0
+UNICODE_SNOB = True
 
 # Marker to use for marking tables for padding post processing
 TABLE_MARKER_FOR_PAD = "special_marker_for_table_padding"
